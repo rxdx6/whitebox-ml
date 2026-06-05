@@ -1,9 +1,16 @@
 #pragma once
+#include <cstddef>
 #include <vector>
 
 namespace ml {
 struct feature_vector {
   std::vector<float> v;
-  feature_vector(size_t dimensions = 0) : v(dimensions, 0) {}
+
+  feature_vector(size_t dimensions) : v(dimensions, 0) {}
+
+  float &operator[](size_t i) { return v[i]; }
+  const float &operator[](size_t i) const { return v[i]; }
+
+  size_t size() { return v.size(); }
 };
 } // namespace ml
