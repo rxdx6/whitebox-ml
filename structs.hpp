@@ -11,6 +11,11 @@ struct feature_vector {
   float &operator[](size_t i) { return v[i]; }
   const float &operator[](size_t i) const { return v[i]; }
 
-  size_t size() { return v.size(); }
+  size_t size() const { return v.size(); }
+};
+
+struct linear_model {
+  feature_vector weights;
+  float bias;
 };
 } // namespace ml

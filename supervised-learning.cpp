@@ -1,4 +1,4 @@
-#include "feature-vector.hpp"
+#include "structs.hpp"
 #include <vector>
 
 template <typename target_type = float> struct dataset {

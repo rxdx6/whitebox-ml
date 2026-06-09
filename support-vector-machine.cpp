@@ -31,7 +31,7 @@
 // SVM: Minimize ||w|| subject to y[i](wx[i] - b) >= 1 for i = 1, ..., N. given
 // y[i](w * x[i] - b) >= 1
 
-#include "feature-vector.hpp"
+#include "structs.hpp"
 #include <cstddef>
 
 struct svm {
