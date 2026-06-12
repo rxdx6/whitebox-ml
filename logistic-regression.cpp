@@ -6,15 +6,25 @@
 // due to the exponential nature of f(x). The log likelihood is given by:
 // Summation(y[i]ln(f(x[i])) + (1 - y[i])ln(1 - f(x[i])))
 
-#include "structs.hpp"
+#include "logistic-regression.hpp"
 #include <vector>
 
-ml::linear_model logistic_regressor(const std::vector<ml::feature_vector> &X,
-                                    const std::vector<bool> &y) {
-  ml::feature_vector w{X[0].size()};
-  float b = 0;
+int main() {
+  std::vector<float> hours_studied = {1, 2, 3, 4, 5, 6};
+  std::vector<float> pass_fail = {0, 0, 0, 1, 1, 1};
 
-  // optimise
+  std::vector<float> w_and_b =
+      train(hours_studied, pass_fail, 0, 0, 0.1, 10000);
 
-  return {w, b};
+  float w = w_and_b[0];
+  float b = w_and_b[1];
+
+  float x_new = 3.5;
+  float probability = predict(x_new, w, b);
+
+  printf("Prediction for x = %f: Probability of passing = %f\n", x_new,
+         probability);
+
+  char decision = (probability >= 0.5) ? 'P' : 'F';
+  printf("Classification Decision (Threshold 0.5): Class %c\n", decision);
 }

@@ -1,15 +1,12 @@
-// f(x) = wx + b
-// Objective function (minimise this): 1/N(summation((f(x[i]) - y[i])^2))
+#include "linear-regression.hpp"
 
-#include "structs.hpp"
-#include <vector>
+int main() {
+  std::vector<float> X = {37.8, 39.3, 45.9, 41.3};
+  std::vector<float> y = {22.1, 10.4, 9.3, 18.5};
 
-ml::linear_model linear_regressor(const std::vector<ml::feature_vector> &X,
-                                  const std::vector<float> &y) {
-  ml::feature_vector w{X[0].size()};
-  float b = 0;
+  std::vector<float> w_and_b = train(X, y, 0, 0, 0.0001, 15000);
 
-  // optimise
-
-  return {w, b};
+  float x_new = 23;
+  float y_new = predict(x_new, w_and_b[0], w_and_b[1]);
+  printf("Prediction for x = %f: y = %f\n", x_new, y_new);
 }
