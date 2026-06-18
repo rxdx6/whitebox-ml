@@ -1,70 +1,62 @@
-// f(x) = 1 / (1 + e^(-(wx + b)))
-// To optimise: Maximise: (Products of i = 1 to N)(f(x[i])^y[i] * (1 -
-// f(x[i]))^(1 - y[i]))
-//
-// It is more convenient to maximise the log likelihood instead of likelihood
-// due to the exponential nature of f(x). The log likelihood is given by:
-// Summation(y[i]ln(f(x[i])) + (1 - y[i])ln(1 - f(x[i])))
-
 #pragma once
 
 #include <algorithm>
 #include <cmath>
 #include <vector>
 
-inline float sigmoid_function(float z) { return 1 / (1 + exp(-z)); }
+inline float sigmoid_function(float logit_value) { return 1 / (1 + exp(-logit_value)); }
 
-inline float predict(float x, float w, float b) {
-  return sigmoid_function((w * x) + b);
+inline float predict(float feature_value, float weight, float bias) {
+  return sigmoid_function((weight * feature_value) + bias);
 }
 
-inline std::vector<float> update_w_and_b(const std::vector<float> &X,
-                                         const std::vector<float> &y, float w,
-                                         float b, float alpha) {
-  float dl_dw = 0;
-  float dl_db = 0;
-  float N = X.size();
+inline std::vector<float> update_w_and_b(const std::vector<float> &features,
+                                         const std::vector<float> &target_labels, float weight,
+                                         float bias, float learning_rate) {
+  float weight_gradient = 0;
+  float bias_gradient = 0;
+  float num_samples = features.size();
 
-  for (size_t i = 0; i < N; i++) {
-    float pred = predict(X[i], w, b);
-    dl_dw += (pred - y[i]) * X[i];
-    dl_db += pred - y[i];
+  for (size_t sample_index = 0; sample_index < num_samples; sample_index++) {
+    float predicted_probability = predict(features[sample_index], weight, bias);
+    weight_gradient += (predicted_probability - target_labels[sample_index]) * features[sample_index];
+    bias_gradient += predicted_probability - target_labels[sample_index];
   }
 
-  w -= (1 / N) * dl_dw * alpha;
-  b -= (1 / N) * dl_db * alpha;
+  weight -= (1 / num_samples) * weight_gradient * learning_rate;
+  bias -= (1 / num_samples) * bias_gradient * learning_rate;
 
-  return {w, b};
+  return {weight, bias};
 }
 
-inline float avg_loss(const std::vector<float> &X, const std::vector<float> &y,
-                      float w, float b) {
-  float N = X.size();
+inline float avg_loss(const std::vector<float> &features, const std::vector<float> &target_labels,
+                      float weight, float bias) {
+  float num_samples = features.size();
   float total_loss = 0;
   float epsilon = 1e-7;
 
-  for (size_t i = 0; i < N; i++) {
-    float pred = predict(X[i], w, b);
-    pred = std::max(epsilon, std::min(1 - epsilon, pred));
-    total_loss += -(y[i] * log(pred) + (1 - y[i]) * log(1 - pred));
+  for (size_t sample_index = 0; sample_index < num_samples; sample_index++) {
+    float predicted_probability = predict(features[sample_index], weight, bias);
+    predicted_probability = std::max(epsilon, std::min(1 - epsilon, predicted_probability));
+    total_loss += -(target_labels[sample_index] * log(predicted_probability) + (1 - target_labels[sample_index]) * log(1 - predicted_probability));
   }
 
-  return total_loss / N;
+  return total_loss / num_samples;
 }
 
-inline std::vector<float> train(const std::vector<float> &X,
-                                const std::vector<float> &y, float w, float b,
-                                float alpha, int epochs) {
-  for (int e = 0; e < epochs; e++) {
-    std::vector<float> w_and_b = update_w_and_b(X, y, w, b, alpha);
-    w = w_and_b[0];
-    b = w_and_b[1];
+inline std::vector<float> train(const std::vector<float> &features,
+                                const std::vector<float> &target_labels, float weight, float bias,
+                                float learning_rate, int num_epochs) {
+  for (int epoch = 0; epoch < num_epochs; epoch++) {
+    std::vector<float> updated_weight_and_bias = update_w_and_b(features, target_labels, weight, bias, learning_rate);
+    weight = updated_weight_and_bias[0];
+    bias = updated_weight_and_bias[1];
 
-    if (e % 1000 == 0) {
-      float current_loss = avg_loss(X, y, w, b);
-      printf("Epoch %d - Current Log Loss: %f\n", e, current_loss);
+    if (epoch % 1000 == 0) {
+      float current_loss = avg_loss(features, target_labels, weight, bias);
+      printf("Epoch %d - Current Log Loss: %f\n", epoch, current_loss);
     }
   }
-  printf("Training complete. Final Log Loss: %f\n", avg_loss(X, y, w, b));
-  return {w, b};
+  printf("Training complete. Final Log Loss: %f\n", avg_loss(features, target_labels, weight, bias));
+  return {weight, bias};
 }

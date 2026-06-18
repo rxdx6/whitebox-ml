@@ -1,90 +1,57 @@
-// Decision boundry is given by wx - b = 0
-// where w is a real valued vector,
-// where b is a real number,
-// where x is our input feature vector,
-// where wx = w[1]x[1] + w[2]x[2] + ... + w[D]x[D]
-// and D is the number of dimensions of the feature vector x
-//
-// The predict label y is given by y = sign(wx - b)
-// where sign is a mathematical operator that takes any value as input and
-// returns +1 if the input is a positive number or -1 if the input is a negative
-// number
-//
-// The goal of SVM is to find w* and b* which are optimal w and b such that
-// f(x) = sign(w*x - b*)
-//
-// wx[i] - b >= 1 if y[i] = +1 and
-// wx[i] - b <= 1 if y[i] = -1
-//
-// We would also prefer that the hyperplane separates positive examples from
-// negative ones with the largest margin. The margin is the distance between the
-// closest examples of two classes, as defined by the decision boundary. A large
-// margin contributes to a better generalization, that is how well the model
-// will classify new examples in the future. To achieve that, we need to
-// minimize the Euclidean norm of w denoted by ||w|| and given by
-// sqrt(
-// summation j = 1 to D(
-// w[j] * w[j];
-// )
-// )
-//
-// SVM: Minimize ||w|| subject to y[i](wx[i] - b) >= 1 for i = 1, ..., N. given
-// y[i](w * x[i] - b) >= 1
-
 #pragma once
 
 #include <vector>
-inline std::vector<float> update_w_and_b(const std::vector<float> &X,
-                                         const std::vector<float> &y, float w,
-                                         float b, float alpha,
-                                         float lambda_param) {
-  float dl_dw = 0;
-  float dl_db = 0;
-  float N = X.size();
+inline std::vector<float> update_w_and_b(const std::vector<float> &features,
+                                         const std::vector<float> &target_labels, float weight,
+                                         float bias, float learning_rate,
+                                         float l2_regularisation_strength) {
+  float weight_gradient = 0;
+  float bias_gradient = 0;
+  float num_samples = features.size();
 
-  for (size_t i = 0; i < N; i++) {
-    if (y[i] * ((w * X[i]) + b) < 1) {
-      dl_dw += -y[i] * X[i];
-      dl_db += -y[i];
+  for (size_t sample_index = 0; sample_index < num_samples; sample_index++) {
+    if (target_labels[sample_index] * ((weight * features[sample_index]) + bias) < 1) {
+      weight_gradient += -target_labels[sample_index] * features[sample_index];
+      bias_gradient += -target_labels[sample_index];
     }
   }
 
-  w -= alpha * (lambda_param * w + (dl_dw / N));
-  b -= alpha * (dl_db / N);
+  weight -= learning_rate * (l2_regularisation_strength * weight + (weight_gradient / num_samples));
+  bias -= learning_rate * (bias_gradient / num_samples);
 
-  return {w, b};
+  return {weight, bias};
 }
 
-inline float avg_loss(const std::vector<float> &X, const std::vector<float> &y,
-                      float w, float b, float lambda_param) {
-  float N = X.size();
+inline float avg_loss(const std::vector<float> &features, const std::vector<float> &target_labels,
+                      float weight, float bias, float l2_regularisation_strength) {
+  float num_samples = features.size();
   float total_hinge_loss = 0;
 
-  for (size_t i = 0; i < N; i++) {
-    float margin_distance = 1 - y[i] * ((w * X[i]) + b);
+  for (size_t sample_index = 0; sample_index < num_samples; sample_index++) {
+    float margin_distance = 1 - target_labels[sample_index] * ((weight * features[sample_index]) + bias);
     if (margin_distance > 0) {
       total_hinge_loss += margin_distance;
     }
   }
 
-  float regular_loss = 0.5 * lambda_param * w * w;
-  return regular_loss + (total_hinge_loss / N);
+  float l2_penalty_term = 0.5 * l2_regularisation_strength * weight * weight;
+  return l2_penalty_term + (total_hinge_loss / num_samples);
 }
 
-inline std::vector<float> train(const std::vector<float> &X,
-                                const std::vector<float> &y, float w, float b,
-                                float alpha, float lambda_param, int epochs) {
-  for (int e = 0; e < epochs; e++) {
-    std::vector<float> w_and_b =
-        update_w_and_b(X, y, w, b, alpha, lambda_param);
-    w = w_and_b[0];
-    b = w_and_b[1];
+inline std::vector<float> train(const std::vector<float> &features,
+                                const std::vector<float> &target_labels, float weight, float bias,
+                                float learning_rate, float l2_regularisation_strength, int num_epochs) {
+  for (int epoch = 0; epoch < num_epochs; epoch++) {
+    std::vector<float> updated_weight_and_bias =
+        update_w_and_b(features, target_labels, weight, bias, learning_rate, l2_regularisation_strength);
+    weight = updated_weight_and_bias[0];
+    bias = updated_weight_and_bias[1];
   }
 
-  return {w, b};
+  return {weight, bias};
 }
 
-inline float predict(float x, float w, float b) {
-  float raw_score = (w * x) + b;
+inline float predict(float feature_value, float weight, float bias) {
+  float raw_score = (weight * feature_value) + bias;
   return (raw_score >= 0) ? 1 : -1;
 }

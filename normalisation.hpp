@@ -3,24 +3,24 @@
 #include <algorithm>
 #include <vector>
 
-inline std::vector<float> normaliser(std::vector<float> x) {
-  if (x.empty()) {
+inline std::vector<float> normaliser(std::vector<float> values) {
+  if (values.empty()) {
     return {};
   }
 
-  auto [min_it, max_it] = std::minmax_element(x.begin(), x.end());
-  float minj = *min_it;
-  float maxj = *max_it;
-  float range = maxj - minj;
+  auto [min_iterator, max_iterator] = std::minmax_element(values.begin(), values.end());
+  float minimum_value = *min_iterator;
+  float maximum_value = *max_iterator;
+  float value_range = maximum_value - minimum_value;
 
-  if (range == 0) {
-    std::fill(x.begin(), x.end(), 0);
-    return x;
+  if (value_range == 0) {
+    std::fill(values.begin(), values.end(), 0);
+    return values;
   }
 
-  for (float &val : x) {
-    val = (val - minj) / range;
+  for (float &value : values) {
+    value = (value - minimum_value) / value_range;
   }
 
-  return x;
+  return values;
 }

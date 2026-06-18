@@ -5,24 +5,24 @@
 #include <vector>
 
 inline std::vector<std::vector<int>>
-encode(const std::vector<char> &data, const std::vector<char> &possibilities) {
-  int number_of_categories = possibilities.size();
+encode(const std::vector<char> &input_data, const std::vector<char> &categories) {
+  int num_categories = categories.size();
 
-  std::vector<std::vector<int>> result;
-  result.reserve(data.size());
+  std::vector<std::vector<int>> encoded_matrix;
+  encoded_matrix.reserve(input_data.size());
 
-  for (char item : data) {
-    auto it = std::find(possibilities.begin(), possibilities.end(), item);
+  for (char data_item : input_data) {
+    auto category_iterator = std::find(categories.begin(), categories.end(), data_item);
 
-    std::vector<int> one_hot(number_of_categories, 0);
+    std::vector<int> one_hot_vector(num_categories, 0);
 
-    if (it != possibilities.end()) {
-      int index = std::distance(possibilities.begin(), it);
-      one_hot[index] = 1;
+    if (category_iterator != categories.end()) {
+      int category_index = std::distance(categories.begin(), category_iterator);
+      one_hot_vector[category_index] = 1;
     }
 
-    result.push_back(one_hot);
+    encoded_matrix.push_back(one_hot_vector);
   }
 
-  return result;
+  return encoded_matrix;
 }
