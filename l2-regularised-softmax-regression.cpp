@@ -10,7 +10,7 @@ int main() {
 
   auto [x_scaled, x_means, x_std_devs] = standardise_matrix(features);
 
-  std::vector<std::vector<float>> w_init = {{0, 0}, {0, 0}, {0, 0}};
+  std::vector<float> w_init = {0, 0, 0, 0, 0, 0};
   std::vector<float> b_init = {0, 0, 0};
 
   auto [w, b] = train(x_scaled, classes, w_init, b_init, 0.1, 0.01, 10000);
