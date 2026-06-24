@@ -6,143 +6,128 @@
 #include <vector>
 
 struct SoftmaxRegressionResult {
-  std::vector<float> weights;
-  std::vector<float> biases;
+  std::vector<float> w;
+  std::vector<float> b;
 };
 
-inline std::vector<float> predict(const std::vector<float> &features,
-                                  const std::vector<float> &weights,
-                                  const std::vector<float> &biases) {
-  size_t num_classes = biases.size();
-  size_t num_features = features.size();
+inline std::vector<float> predict(const std::vector<float> &x,
+                                  const std::vector<float> &w,
+                                  const std::vector<float> &b) {
+  size_t num_classes = b.size();
+  size_t d = x.size();
   std::vector<float> logits(num_classes);
   float maximum_logit = -INFINITY;
   for (size_t class_index = 0; class_index < num_classes; class_index++) {
     float dot_product = 0.0f;
-    for (size_t feature_index = 0; feature_index < num_features;
-         feature_index++) {
-      dot_product += weights[class_index * num_features + feature_index] *
-                     features[feature_index];
+    for (size_t j = 0; j < d; j++) {
+      dot_product += w[class_index * d + j] * x[j];
     }
-    logits[class_index] = dot_product + biases[class_index];
+    logits[class_index] = dot_product + b[class_index];
     if (logits[class_index] > maximum_logit) {
       maximum_logit = logits[class_index];
     }
   }
-  std::vector<float> probabilities(num_classes);
+  std::vector<float> hat_y(num_classes);
   float sum_of_exponentials = 0;
   for (size_t class_index = 0; class_index < num_classes; class_index++) {
-    probabilities[class_index] = exp(logits[class_index] - maximum_logit);
-    sum_of_exponentials += probabilities[class_index];
+    hat_y[class_index] = exp(logits[class_index] - maximum_logit);
+    sum_of_exponentials += hat_y[class_index];
   }
   for (size_t class_index = 0; class_index < num_classes; class_index++) {
-    probabilities[class_index] /= sum_of_exponentials;
+    hat_y[class_index] /= sum_of_exponentials;
   }
-  return probabilities;
+  return hat_y;
 }
 
 inline SoftmaxRegressionResult
-update_w_and_b(const std::vector<std::vector<float>> &features_matrix,
-               const std::vector<float> &target_labels,
-               const std::vector<float> &weights,
-               const std::vector<float> &biases, float learning_rate,
+update_w_and_b(const std::vector<std::vector<float>> &X,
+               const std::vector<float> &y,
+               const std::vector<float> &w,
+               const std::vector<float> &b, float alpha,
                float l2_regularisation_strength) {
-  size_t num_classes = biases.size();
-  size_t num_features = features_matrix[0].size();
-  float num_samples = features_matrix.size();
-  std::vector<float> weight_gradients(num_classes * num_features, 0.0f);
-  std::vector<float> bias_gradients(num_classes, 0.0f);
+  size_t num_classes = b.size();
+  size_t d = X[0].size();
+  float m = X.size();
+  std::vector<float> dw(num_classes * d, 0.0f);
+  std::vector<float> db(num_classes, 0.0f);
 
-  for (size_t sample_index = 0; sample_index < num_samples; sample_index++) {
-    std::vector<float> predicted_probabilities =
-        predict(features_matrix[sample_index], weights, biases);
-    int true_class_index = static_cast<int>(target_labels[sample_index]);
+  for (size_t i = 0; i < m; i++) {
+    std::vector<float> hat_y = predict(X[i], w, b);
+    int true_class_index = static_cast<int>(y[i]);
     for (size_t class_index = 0; class_index < num_classes; class_index++) {
       float is_target_class =
           (true_class_index == static_cast<int>(class_index)) ? 1.0f : 0.0f;
-      float prediction_error =
-          predicted_probabilities[class_index] - is_target_class;
-      for (size_t feature_index = 0; feature_index < num_features;
-           feature_index++) {
-        weight_gradients[class_index * num_features + feature_index] +=
-            prediction_error * features_matrix[sample_index][feature_index];
+      float prediction_error = hat_y[class_index] - is_target_class;
+      for (size_t j = 0; j < d; j++) {
+        dw[class_index * d + j] += prediction_error * X[i][j];
       }
-      bias_gradients[class_index] += prediction_error;
+      db[class_index] += prediction_error;
     }
   }
 
-  std::vector<float> updated_weights = weights;
-  std::vector<float> updated_biases = biases;
+  std::vector<float> updated_w = w;
+  std::vector<float> updated_b = b;
   for (size_t class_index = 0; class_index < num_classes; class_index++) {
-    for (size_t feature_index = 0; feature_index < num_features;
-         feature_index++) {
-      updated_weights[class_index * num_features + feature_index] -=
-          learning_rate *
-          (((1.0f / num_samples) *
-            weight_gradients[class_index * num_features + feature_index]) +
-           (l2_regularisation_strength *
-            weights[class_index * num_features + feature_index]));
+    for (size_t j = 0; j < d; j++) {
+      updated_w[class_index * d + j] -=
+          alpha *
+          (((1.0f / m) * dw[class_index * d + j]) +
+           (l2_regularisation_strength * w[class_index * d + j]));
     }
-    updated_biases[class_index] -=
-        learning_rate * ((1.0f / num_samples) * bias_gradients[class_index]);
+    updated_b[class_index] -= alpha * ((1.0f / m) * db[class_index]);
   }
 
-  return {updated_weights, updated_biases};
+  return {updated_w, updated_b};
 }
 
-inline float avg_loss(const std::vector<std::vector<float>> &features_matrix,
-                      const std::vector<float> &target_labels,
-                      const std::vector<float> &weights,
-                      const std::vector<float> &biases,
+inline float avg_loss(const std::vector<std::vector<float>> &X,
+                      const std::vector<float> &y,
+                      const std::vector<float> &w,
+                      const std::vector<float> &b,
                       float l2_regularisation_strength) {
-  float num_samples = features_matrix.size();
+  float m = X.size();
   float total_loss = 0;
   float epsilon = 1e-7;
 
-  for (size_t sample_index = 0; sample_index < num_samples; sample_index++) {
-    std::vector<float> predicted_probabilities =
-        predict(features_matrix[sample_index], weights, biases);
-    int true_class_index = static_cast<int>(target_labels[sample_index]);
-    float predicted_probability = predicted_probabilities[true_class_index];
+  for (size_t i = 0; i < m; i++) {
+    std::vector<float> hat_y = predict(X[i], w, b);
+    int true_class_index = static_cast<int>(y[i]);
+    float predicted_probability = hat_y[true_class_index];
     predicted_probability =
         std::max(epsilon, std::min(1.0f - epsilon, predicted_probability));
     total_loss += -log(predicted_probability);
   }
 
   float weights_squared_sum = 0;
-  for (float weight_value : weights) {
+  for (float weight_value : w) {
     weights_squared_sum += weight_value * weight_value;
   }
-  float l2_penalty_term =
-      0.5f * l2_regularisation_strength * weights_squared_sum;
+  float l2_penalty_term = 0.5f * l2_regularisation_strength * weights_squared_sum;
 
-  return (total_loss / num_samples) + l2_penalty_term;
+  float J = total_loss / m;
+  return J + l2_penalty_term;
 }
 
 inline SoftmaxRegressionResult
-train(const std::vector<std::vector<float>> &features_matrix,
-      const std::vector<float> &target_labels,
-      const std::vector<float> &initial_weights,
-      const std::vector<float> &initial_biases, float learning_rate,
+train(const std::vector<std::vector<float>> &X,
+      const std::vector<float> &y,
+      const std::vector<float> &initial_w,
+      const std::vector<float> &initial_b, float alpha,
       float l2_regularisation_strength, int num_epochs) {
-  std::vector<float> current_weights = initial_weights;
-  std::vector<float> current_biases = initial_biases;
+  std::vector<float> current_w = initial_w;
+  std::vector<float> current_b = initial_b;
   for (int epoch = 0; epoch < num_epochs; epoch++) {
-    SoftmaxRegressionResult regression_result = update_w_and_b(
-        features_matrix, target_labels, current_weights, current_biases,
-        learning_rate, l2_regularisation_strength);
-    current_weights = regression_result.weights;
-    current_biases = regression_result.biases;
+    SoftmaxRegressionResult result = update_w_and_b(
+        X, y, current_w, current_b, alpha, l2_regularisation_strength);
+    current_w = result.w;
+    current_b = result.b;
 
     if (epoch % 1000 == 0) {
-      float current_loss =
-          avg_loss(features_matrix, target_labels, current_weights,
-                   current_biases, l2_regularisation_strength);
-      printf("Epoch %d - Current Log Loss: %f\n", epoch, current_loss);
+      float loss = avg_loss(X, y, current_w, current_b, l2_regularisation_strength);
+      printf("Epoch %d - Current Log Loss: %f\n", epoch, loss);
     }
   }
   printf("Training complete. Final Log Loss: %f\n",
-         avg_loss(features_matrix, target_labels, current_weights,
-                  current_biases, l2_regularisation_strength));
-  return {current_weights, current_biases};
+         avg_loss(X, y, current_w, current_b, l2_regularisation_strength));
+  return {current_w, current_b};
 }

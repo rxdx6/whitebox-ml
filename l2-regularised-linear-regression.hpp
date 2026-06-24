@@ -3,112 +3,94 @@
 #include <vector>
 
 struct LinearRegressionResult {
-  std::vector<float> weights;
-  float bias;
+  std::vector<float> w;
+  float b;
 };
 
 inline LinearRegressionResult
-update_w_and_b(const std::vector<std::vector<float>> &features_matrix,
-               const std::vector<float> &target_labels,
-               const std::vector<float> &weights, float bias,
-               float learning_rate, float l2_regularisation_strength) {
-  float bias_gradient = 0.0f;
-  float num_samples = features_matrix.size();
-  size_t num_features = weights.size();
-  std::vector<float> weight_gradients(num_features, 0.0f);
+update_w_and_b(const std::vector<std::vector<float>> &X,
+               const std::vector<float> &y, const std::vector<float> &w,
+               float b, float alpha, float l2_regularisation_strength) {
+  float db = 0.0f;
+  float m = X.size();
+  size_t d = w.size();
+  std::vector<float> dw(d, 0.0f);
 
-  for (size_t sample_index = 0; sample_index < num_samples; sample_index++) {
-    float predicted_value = bias;
-    for (size_t feature_index = 0; feature_index < num_features;
-         feature_index++) {
-      predicted_value +=
-          weights[feature_index] * features_matrix[sample_index][feature_index];
+  for (size_t i = 0; i < m; i++) {
+    float hat_y = b;
+    for (size_t j = 0; j < d; j++) {
+      hat_y += w[j] * X[i][j];
     }
 
-    float prediction_error = target_labels[sample_index] - predicted_value;
-    for (size_t feature_index = 0; feature_index < num_features;
-         feature_index++) {
-      weight_gradients[feature_index] +=
-          -2 * features_matrix[sample_index][feature_index] * prediction_error;
+    float prediction_error = y[i] - hat_y;
+    for (size_t j = 0; j < d; j++) {
+      dw[j] += -2 * X[i][j] * prediction_error;
     }
-    bias_gradient += -2 * prediction_error;
+    db += -2 * prediction_error;
   }
 
-  std::vector<float> updated_weights = weights;
-  for (size_t feature_index = 0; feature_index < num_features;
-       feature_index++) {
-    updated_weights[feature_index] -=
-        learning_rate *
-        (((1.0f / num_samples) * weight_gradients[feature_index]) +
-         (l2_regularisation_strength * weights[feature_index]));
+  std::vector<float> updated_w = w;
+  for (size_t j = 0; j < d; j++) {
+    updated_w[j] -=
+        alpha * (((1.0f / m) * dw[j]) + (l2_regularisation_strength * w[j]));
   }
-  float updated_bias =
-      bias - (1.0f / num_samples) * bias_gradient * learning_rate;
+  float updated_b = b - (1.0f / m) * db * alpha;
 
-  return {updated_weights, updated_bias};
+  return {updated_w, updated_b};
 }
 
-inline float avg_loss(const std::vector<std::vector<float>> &features_matrix,
-                      const std::vector<float> &target_labels,
-                      const std::vector<float> &weights, float bias,
-                      float l2_regularisation_strength) {
-  float num_samples = features_matrix.size();
+inline float avg_loss(const std::vector<std::vector<float>> &X,
+                      const std::vector<float> &y, const std::vector<float> &w,
+                      float b, float l2_regularisation_strength) {
+  float m = X.size();
   float total_error = 0.0f;
-  size_t num_features = weights.size();
+  size_t d = w.size();
 
-  for (size_t sample_index = 0; sample_index < num_samples; sample_index++) {
-    float predicted_value = bias;
-    for (size_t feature_index = 0; feature_index < num_features;
-         feature_index++) {
-      predicted_value +=
-          weights[feature_index] * features_matrix[sample_index][feature_index];
+  for (size_t i = 0; i < m; i++) {
+    float hat_y = b;
+    for (size_t j = 0; j < d; j++) {
+      hat_y += w[j] * X[i][j];
     }
-    float error = target_labels[sample_index] - predicted_value;
+    float error = y[i] - hat_y;
     total_error += error * error;
   }
 
-  float mean_squared_error = total_error / num_samples;
+  float J = total_error / m;
   float weights_squared_sum = 0.0f;
-  for (float weight_value : weights) {
+  for (float weight_value : w) {
     weights_squared_sum += weight_value * weight_value;
   }
   float l2_penalty_term =
       0.5f * l2_regularisation_strength * weights_squared_sum;
 
-  return mean_squared_error + l2_penalty_term;
+  return J + l2_penalty_term;
 }
 
 inline LinearRegressionResult
-train(const std::vector<std::vector<float>> &features_matrix,
-      const std::vector<float> &target_labels,
-      const std::vector<float> &weights, float bias, float learning_rate,
+train(const std::vector<std::vector<float>> &X, const std::vector<float> &y,
+      const std::vector<float> &w, float b, float alpha,
       float l2_regularisation_strength, int num_epochs) {
-  std::vector<float> current_weights = weights;
-  float current_bias = bias;
+  std::vector<float> current_w = w;
+  float current_b = b;
   for (int epoch = 0; epoch < num_epochs; epoch++) {
-    LinearRegressionResult regression_result =
-        update_w_and_b(features_matrix, target_labels, current_weights,
-                       current_bias, learning_rate, l2_regularisation_strength);
-    current_weights = regression_result.weights;
-    current_bias = regression_result.bias;
+    LinearRegressionResult result = update_w_and_b(
+        X, y, current_w, current_b, alpha, l2_regularisation_strength);
+    current_w = result.w;
+    current_b = result.b;
   }
 
-  return {current_weights, current_bias};
+  return {current_w, current_b};
 }
 
-inline std::vector<float>
-predict(const std::vector<std::vector<float>> &features_matrix,
-        const std::vector<float> &weights, float bias) {
-  std::vector<float> predictions(features_matrix.size());
-  for (size_t sample_index = 0; sample_index < features_matrix.size();
-       sample_index++) {
-    float predicted_value = bias;
-    for (size_t feature_index = 0; feature_index < weights.size();
-         feature_index++) {
-      predicted_value +=
-          weights[feature_index] * features_matrix[sample_index][feature_index];
+inline std::vector<float> predict(const std::vector<std::vector<float>> &X,
+                                  const std::vector<float> &w, float b) {
+  std::vector<float> y_pred(X.size());
+  for (size_t i = 0; i < X.size(); i++) {
+    float hat_y = b;
+    for (size_t j = 0; j < w.size(); j++) {
+      hat_y += w[j] * X[i][j];
     }
-    predictions[sample_index] = predicted_value;
+    y_pred[i] = hat_y;
   }
-  return predictions;
+  return y_pred;
 }

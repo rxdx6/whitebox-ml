@@ -21,28 +21,28 @@ struct StandardiseResult {
   float standard_deviation;
 };
 
-inline StandardiseResult standardise(const std::vector<float> &input_vector) {
-  if (input_vector.empty()) {
+inline StandardiseResult standardise(const std::vector<float> &x) {
+  if (x.empty()) {
     return {{}, 0.0f, 1.0f};
   }
 
-  float sum = std::accumulate(input_vector.begin(), input_vector.end(), 0.0f);
-  float average = sum / input_vector.size();
+  float sum = std::accumulate(x.begin(), x.end(), 0.0f);
+  float average = sum / x.size();
 
   float variance = 0.0f;
-  for (const float value : input_vector) {
+  for (const float value : x) {
     float difference = value - average;
     variance += difference * difference;
   }
-  float standard_deviation = std::sqrt(variance / input_vector.size());
+  float standard_deviation = std::sqrt(variance / x.size());
 
   if (standard_deviation == 0.0f) {
-    return {std::vector<float>(input_vector.size(), 0.0f), average, 0.0f};
+    return {std::vector<float>(x.size(), 0.0f), average, 0.0f};
   }
 
   std::vector<float> scaled_vector;
-  scaled_vector.reserve(input_vector.size());
-  for (const float value : input_vector) {
+  scaled_vector.reserve(x.size());
+  for (const float value : x) {
     scaled_vector.push_back(standardise(value, average, standard_deviation));
   }
 
@@ -56,30 +56,27 @@ struct StandardiseMatrixResult {
 };
 
 inline StandardiseMatrixResult
-standardise_matrix(const std::vector<std::vector<float>> &features_matrix) {
-  if (features_matrix.empty()) {
+standardise_matrix(const std::vector<std::vector<float>> &X) {
+  if (X.empty()) {
     return {{}, {}, {}};
   }
-  size_t num_samples = features_matrix.size();
-  size_t num_features = features_matrix[0].size();
-  std::vector<std::vector<float>> scaled_matrix(
-      num_samples, std::vector<float>(num_features));
-  std::vector<float> means(num_features);
-  std::vector<float> standard_deviations(num_features);
+  size_t m = X.size();
+  size_t d = X[0].size();
+  std::vector<std::vector<float>> scaled_matrix(m, std::vector<float>(d));
+  std::vector<float> means(d);
+  std::vector<float> standard_deviations(d);
 
-  for (size_t feature_index = 0; feature_index < num_features;
-       ++feature_index) {
-    std::vector<float> column_vector(num_samples);
-    for (size_t sample_index = 0; sample_index < num_samples; ++sample_index) {
-      column_vector[sample_index] =
-          features_matrix[sample_index][feature_index];
+  for (size_t j = 0; j < d; ++j) {
+    std::vector<float> column_vector(m);
+    for (size_t i = 0; i < m; ++i) {
+      column_vector[i] = X[i][j];
     }
     auto [scaled_column, column_mean, column_standard_deviation] =
         standardise(column_vector);
-    means[feature_index] = column_mean;
-    standard_deviations[feature_index] = column_standard_deviation;
-    for (size_t sample_index = 0; sample_index < num_samples; ++sample_index) {
-      scaled_matrix[sample_index][feature_index] = scaled_column[sample_index];
+    means[j] = column_mean;
+    standard_deviations[j] = column_standard_deviation;
+    for (size_t i = 0; i < m; ++i) {
+      scaled_matrix[i][j] = scaled_column[i];
     }
   }
 
@@ -87,15 +84,13 @@ standardise_matrix(const std::vector<std::vector<float>> &features_matrix) {
 }
 
 inline std::vector<float>
-standardise_vector(const std::vector<float> &input_vector,
+standardise_vector(const std::vector<float> &x,
                    const std::vector<float> &means,
                    const std::vector<float> &standard_deviations) {
-  std::vector<float> scaled_vector(input_vector.size());
-  for (size_t feature_index = 0; feature_index < input_vector.size();
-       ++feature_index) {
-    scaled_vector[feature_index] =
-        standardise(input_vector[feature_index], means[feature_index],
-                    standard_deviations[feature_index]);
+  std::vector<float> scaled_vector(x.size());
+  for (size_t j = 0; j < x.size(); ++j) {
+    scaled_vector[j] =
+        standardise(x[j], means[j], standard_deviations[j]);
   }
   return scaled_vector;
 }

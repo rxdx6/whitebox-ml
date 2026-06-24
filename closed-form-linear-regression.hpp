@@ -6,155 +6,134 @@
 #include <vector>
 
 inline std::vector<std::vector<float>>
-matrix_transpose(const std::vector<std::vector<float>> &input_matrix) {
-  if (input_matrix.empty() || input_matrix[0].empty()) {
+matrix_transpose(const std::vector<std::vector<float>> &A) {
+  if (A.empty() || A[0].empty()) {
     return {};
   }
 
-  size_t num_rows = input_matrix.size();
-  size_t num_columns = input_matrix[0].size();
+  size_t rows = A.size();
+  size_t cols = A[0].size();
 
-  std::vector<std::vector<float>> transposed(num_columns,
-                                             std::vector<float>(num_rows, 0));
-  for (size_t row_index = 0; row_index < num_rows; row_index++) {
-    for (size_t column_index = 0; column_index < num_columns; column_index++) {
-      transposed[column_index][row_index] =
-          input_matrix[row_index][column_index];
+  std::vector<std::vector<float>> A_T(cols, std::vector<float>(rows, 0));
+  for (size_t i = 0; i < rows; i++) {
+    for (size_t j = 0; j < cols; j++) {
+      A_T[j][i] = A[i][j];
     }
   }
 
-  return transposed;
+  return A_T;
 }
 
 inline std::vector<std::vector<float>>
-matrix_multiplication(const std::vector<std::vector<float>> &matrix1,
-                      const std::vector<std::vector<float>> &matrix2) {
-  if (matrix1.empty() || matrix1[0].empty() || matrix2.empty() ||
-      matrix2[0].empty()) {
+matrix_multiplication(const std::vector<std::vector<float>> &A,
+                      const std::vector<std::vector<float>> &B) {
+  if (A.empty() || A[0].empty() || B.empty() || B[0].empty()) {
     throw std::invalid_argument("Matrices cannot be empty for multiplication");
   }
 
-  size_t matrix1_rows = matrix1.size();
-  size_t matrix1_columns = matrix1[0].size();
-  size_t matrix2_rows = matrix2.size();
-  size_t matrix2_columns = matrix2[0].size();
+  size_t A_rows = A.size();
+  size_t A_cols = A[0].size();
+  size_t B_rows = B.size();
+  size_t B_cols = B[0].size();
 
-  if (matrix1_columns != matrix2_rows) {
+  if (A_cols != B_rows) {
     throw std::invalid_argument(
         "Matrix dimensions do not match for multiplication");
   }
 
-  std::vector<std::vector<float>> result(
-      matrix1_rows, std::vector<float>(matrix2_columns, 0));
+  std::vector<std::vector<float>> C(A_rows, std::vector<float>(B_cols, 0));
 
-  for (size_t row_index = 0; row_index < matrix1_rows; row_index++) {
-    for (size_t column_index = 0; column_index < matrix2_columns;
-         column_index++) {
-      for (size_t inner_index = 0; inner_index < matrix1_columns;
-           inner_index++) {
-        result[row_index][column_index] += matrix1[row_index][inner_index] *
-                                           matrix2[inner_index][column_index];
+  for (size_t i = 0; i < A_rows; i++) {
+    for (size_t j = 0; j < B_cols; j++) {
+      for (size_t k = 0; k < A_cols; k++) {
+        C[i][j] += A[i][k] * B[k][j];
       }
     }
   }
 
-  return result;
+  return C;
 }
 
 inline std::vector<float>
-solve_linear_system(const std::vector<std::vector<float>> &matrix1,
-                    const std::vector<std::vector<float>> &matrix2) {
-  if (matrix1.empty() || matrix2.empty()) {
+solve_linear_system(const std::vector<std::vector<float>> &A,
+                    const std::vector<std::vector<float>> &B) {
+  if (A.empty() || B.empty()) {
     throw std::invalid_argument("System matrices cannot be empty");
   }
 
-  size_t matrix_size = matrix1.size();
-  std::vector<std::vector<float>> augmented_matrix(
-      matrix_size, std::vector<float>(matrix_size + 1, 0));
+  size_t n = A.size();
+  std::vector<std::vector<float>> augmented(n, std::vector<float>(n + 1, 0));
 
-  for (size_t row_index = 0; row_index < matrix_size; row_index++) {
-    for (size_t column_index = 0; column_index < matrix_size; column_index++) {
-      augmented_matrix[row_index][column_index] =
-          matrix1[row_index][column_index];
+  for (size_t i = 0; i < n; i++) {
+    for (size_t j = 0; j < n; j++) {
+      augmented[i][j] = A[i][j];
     }
-    augmented_matrix[row_index][matrix_size] = matrix2[row_index][0];
+    augmented[i][n] = B[i][0];
   }
 
-  for (size_t pivot_index = 0; pivot_index < matrix_size; pivot_index++) {
-    size_t max_row_index = pivot_index;
-    for (size_t row_index = pivot_index + 1; row_index < matrix_size;
-         row_index++) {
-      if (std::abs(augmented_matrix[row_index][pivot_index]) >
-          std::abs(augmented_matrix[max_row_index][pivot_index])) {
-        max_row_index = row_index;
+  for (size_t k = 0; k < n; k++) {
+    size_t max_row = k;
+    for (size_t i = k + 1; i < n; i++) {
+      if (std::abs(augmented[i][k]) > std::abs(augmented[max_row][k])) {
+        max_row = i;
       }
     }
 
-    std::swap(augmented_matrix[pivot_index], augmented_matrix[max_row_index]);
+    std::swap(augmented[k], augmented[max_row]);
 
-    float pivot_value = augmented_matrix[pivot_index][pivot_index];
+    float pivot = augmented[k][k];
 
-    if (std::abs(pivot_value) < 1e-7f) {
+    if (std::abs(pivot) < 1e-7f) {
       throw std::runtime_error(
           "Matrix is singular or near-singular; system cannot be solved.");
     }
 
-    for (size_t column_index = pivot_index; column_index <= matrix_size;
-         column_index++) {
-      augmented_matrix[pivot_index][column_index] /= pivot_value;
+    for (size_t j = k; j <= n; j++) {
+      augmented[k][j] /= pivot;
     }
 
-    for (size_t row_index = 0; row_index < matrix_size; row_index++) {
-      if (row_index != pivot_index) {
-        float elimination_factor = augmented_matrix[row_index][pivot_index];
-        for (size_t column_index = pivot_index; column_index <= matrix_size;
-             column_index++) {
-          augmented_matrix[row_index][column_index] -=
-              elimination_factor * augmented_matrix[pivot_index][column_index];
+    for (size_t i = 0; i < n; i++) {
+      if (i != k) {
+        float factor = augmented[i][k];
+        for (size_t j = k; j <= n; j++) {
+          augmented[i][j] -= factor * augmented[k][j];
         }
       }
     }
   }
 
-  std::vector<float> weights(matrix_size);
-  for (size_t row_index = 0; row_index < matrix_size; row_index++) {
-    weights[row_index] = augmented_matrix[row_index][matrix_size];
+  std::vector<float> w(n);
+  for (size_t i = 0; i < n; i++) {
+    w[i] = augmented[i][n];
   }
 
-  return weights;
+  return w;
 }
 
 inline std::vector<float>
-linear_regressor(std::vector<std::vector<float>> features_matrix,
-                 const std::vector<float> &target_labels) {
-  if (features_matrix.empty() || target_labels.empty() ||
-      features_matrix.size() != target_labels.size()) {
+linear_regressor(std::vector<std::vector<float>> X,
+                 const std::vector<float> &y) {
+  if (X.empty() || y.empty() || X.size() != y.size()) {
     throw std::invalid_argument(
         "Sample counts in X and y must match and not be empty");
   }
 
-  size_t num_samples = features_matrix.size();
+  size_t m = X.size();
 
-  for (size_t sample_index = 0; sample_index < features_matrix.size();
-       sample_index++) {
-    features_matrix[sample_index].push_back(1.0f);
+  for (size_t i = 0; i < X.size(); i++) {
+    X[i].push_back(1.0f);
   }
 
-  std::vector<std::vector<float>> target_labels_matrix(num_samples,
-                                                       std::vector<float>(1));
-  for (size_t sample_index = 0; sample_index < num_samples; sample_index++) {
-    target_labels_matrix[sample_index][0] = target_labels[sample_index];
+  std::vector<std::vector<float>> Y(m, std::vector<float>(1));
+  for (size_t i = 0; i < m; i++) {
+    Y[i][0] = y[i];
   }
 
-  std::vector<std::vector<float>> transposed_features =
-      matrix_transpose(features_matrix);
-  std::vector<std::vector<float>> transposed_features_times_features =
-      matrix_multiplication(transposed_features, features_matrix);
-  std::vector<std::vector<float>> transposed_features_times_targets =
-      matrix_multiplication(transposed_features, target_labels_matrix);
+  std::vector<std::vector<float>> X_T = matrix_transpose(X);
+  std::vector<std::vector<float>> X_T_X = matrix_multiplication(X_T, X);
+  std::vector<std::vector<float>> X_T_Y = matrix_multiplication(X_T, Y);
 
-  std::vector<float> weights = solve_linear_system(
-      transposed_features_times_features, transposed_features_times_targets);
+  std::vector<float> w = solve_linear_system(X_T_X, X_T_Y);
 
-  return weights;
+  return w;
 }

@@ -1,57 +1,58 @@
 #pragma once
 
 #include <vector>
-inline std::vector<float> update_w_and_b(const std::vector<float> &features,
-                                         const std::vector<float> &target_labels, float weight,
-                                         float bias, float learning_rate,
+inline std::vector<float> update_w_and_b(const std::vector<float> &X,
+                                         const std::vector<float> &y, float w,
+                                         float b, float alpha,
                                          float l2_regularisation_strength) {
-  float weight_gradient = 0;
-  float bias_gradient = 0;
-  float num_samples = features.size();
+  float dw = 0;
+  float db = 0;
+  float m = X.size();
 
-  for (size_t sample_index = 0; sample_index < num_samples; sample_index++) {
-    if (target_labels[sample_index] * ((weight * features[sample_index]) + bias) < 1) {
-      weight_gradient += -target_labels[sample_index] * features[sample_index];
-      bias_gradient += -target_labels[sample_index];
+  for (size_t i = 0; i < m; i++) {
+    if (y[i] * ((w * X[i]) + b) < 1) {
+      dw += -y[i] * X[i];
+      db += -y[i];
     }
   }
 
-  weight -= learning_rate * (l2_regularisation_strength * weight + (weight_gradient / num_samples));
-  bias -= learning_rate * (bias_gradient / num_samples);
+  w -= alpha * (l2_regularisation_strength * w + (dw / m));
+  b -= alpha * (db / m);
 
-  return {weight, bias};
+  return {w, b};
 }
 
-inline float avg_loss(const std::vector<float> &features, const std::vector<float> &target_labels,
-                      float weight, float bias, float l2_regularisation_strength) {
-  float num_samples = features.size();
-  float total_hinge_loss = 0;
+inline float avg_loss(const std::vector<float> &X, const std::vector<float> &y,
+                      float w, float b, float l2_regularisation_strength) {
+  float m = X.size();
+  float hinge_loss_sum = 0;
 
-  for (size_t sample_index = 0; sample_index < num_samples; sample_index++) {
-    float margin_distance = 1 - target_labels[sample_index] * ((weight * features[sample_index]) + bias);
+  for (size_t i = 0; i < m; i++) {
+    float margin_distance = 1 - y[i] * ((w * X[i]) + b);
     if (margin_distance > 0) {
-      total_hinge_loss += margin_distance;
+      hinge_loss_sum += margin_distance;
     }
   }
 
-  float l2_penalty_term = 0.5 * l2_regularisation_strength * weight * weight;
-  return l2_penalty_term + (total_hinge_loss / num_samples);
+  float l2_penalty_term = 0.5 * l2_regularisation_strength * w * w;
+  float J = hinge_loss_sum / m;
+  return l2_penalty_term + J;
 }
 
-inline std::vector<float> train(const std::vector<float> &features,
-                                const std::vector<float> &target_labels, float weight, float bias,
-                                float learning_rate, float l2_regularisation_strength, int num_epochs) {
+inline std::vector<float> train(const std::vector<float> &X,
+                                const std::vector<float> &y, float w, float b,
+                                float alpha, float l2_regularisation_strength, int num_epochs) {
   for (int epoch = 0; epoch < num_epochs; epoch++) {
-    std::vector<float> updated_weight_and_bias =
-        update_w_and_b(features, target_labels, weight, bias, learning_rate, l2_regularisation_strength);
-    weight = updated_weight_and_bias[0];
-    bias = updated_weight_and_bias[1];
+    std::vector<float> updated_w_and_b =
+        update_w_and_b(X, y, w, b, alpha, l2_regularisation_strength);
+    w = updated_w_and_b[0];
+    b = updated_w_and_b[1];
   }
 
-  return {weight, bias};
+  return {w, b};
 }
 
-inline float predict(float feature_value, float weight, float bias) {
-  float raw_score = (weight * feature_value) + bias;
-  return (raw_score >= 0) ? 1 : -1;
+inline float predict(float x, float w, float b) {
+  float hat_y = (w * x) + b;
+  return (hat_y >= 0) ? 1 : -1;
 }
