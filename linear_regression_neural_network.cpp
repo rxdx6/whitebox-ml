@@ -1,30 +1,41 @@
 #include "linear_regression_neural_network.hpp"
-#include "standardisation.hpp"
 #include <cstdio>
+#include <fstream>
+#include <sstream>
+#include <string>
 #include <vector>
 
 int main() {
-  std::vector<std::vector<float>> x = {{1.0f, 2.0f}, {2.0f, 3.0f}, {3.0f, 1.0f},
-                                       {4.0f, 3.0f}, {5.0f, 2.0f}, {6.0f, 5.0f},
-                                       {7.0f, 2.0f}, {8.0f, 4.0f}};
-  std::vector<std::vector<float>> y = {{0.5f}, {1.5f}, {5.5f},  {5.5f},
-                                       {8.5f}, {7.5f}, {12.5f}, {12.5f}};
-
-  auto [x_scaled, x_means, x_std_devs] = standardise_matrix(x);
-
+  std::ifstream file("auto-mpg.csv");
+  std::string line;
+  std::getline(file, line);
+  std::vector<std::vector<float>> x;
+  std::vector<std::vector<float>> y;
+  while (std::getline(file, line)) {
+    if (line.empty()) {
+      continue;
+    }
+    std::stringstream ss(line);
+    std::string val;
+    std::vector<float> row;
+    while (std::getline(ss, val, ',')) {
+      row.push_back(std::stof(val));
+    }
+    if (row.empty()) {
+      continue;
+    }
+    y.push_back({row[0]});
+    x.push_back(std::vector<float>(row.begin() + 1, row.end()));
+  }
+  size_t split = x.size() / 2;
+  std::vector<std::vector<float>> x_train(x.begin(), x.begin() + split);
+  std::vector<std::vector<float>> y_train(y.begin(), y.begin() + split);
+  std::vector<std::vector<float>> x_test(x.begin() + split, x.end());
+  std::vector<std::vector<float>> y_test(y.begin() + split, y.end());
   std::vector<NetworkLayer> network =
-      train(x_scaled, y, 3, 128, 0.005f, 0.001f, 100000, true);
-
-  std::vector<std::vector<float>> x_new = {{5.0f, 2.0f}, {3.5f, 1.5f}};
-  std::vector<std::vector<float>> x_new_scaled;
-  for (const auto &v : x_new) {
-    x_new_scaled.push_back(standardise_vector(v, x_means, x_std_devs));
-  }
-
-  std::vector<std::vector<float>> predictions = predict(network, x_new_scaled);
-
-  for (size_t i = 0; i < x_new.size(); ++i) {
-    printf("Prediction for x = {%f, %f}: y = %f\n", x_new[i][0], x_new[i][1],
-           predictions[i][0]);
-  }
+      train(x_train, y_train, 3, 128, 0.005f, 0.001f, 10000, true);
+  std::vector<std::vector<float>> predictions = predict(network, x_test);
+  float test_loss =
+      calculate_network_loss(network, predictions, y_test, 0.001f);
+  printf("Test Loss: %f\n", test_loss);
 }

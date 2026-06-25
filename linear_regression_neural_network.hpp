@@ -185,7 +185,7 @@ inline void train_network(std::vector<NetworkLayer> &network,
     update_network_weights(network, alpha, l2_regularisation_strength);
 
     if (print_progress &&
-        (epoch == 0 || (epoch + 1) % 1000 == 0 || epoch == num_epochs - 1)) {
+        (epoch == 0 || (epoch + 1) % 100 == 0 || epoch == num_epochs - 1)) {
       float loss = calculate_network_loss(network, predictions, y,
                                           l2_regularisation_strength);
       std::cout << "Epoch " << (epoch + 1) << "/" << num_epochs
