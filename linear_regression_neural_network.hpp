@@ -1,25 +1,28 @@
 #pragma once
 
+#define ACCELERATE_NEW_LAPACK
+#include <Accelerate/Accelerate.h>
+
 #include <cmath>
 #include <cstddef>
 #include <iostream>
 #include <random>
 #include <vector>
 
-struct NetworkNeuron {
-  std::vector<float> w;
-  float b = 0;
+struct NetworkLayer {
+  size_t num_inputs = 0;
+  size_t num_neurons = 0;
+
+  std::vector<float> weights;
+  std::vector<float> biases;
 
   std::vector<float> dw;
-  float db = 0;
-};
+  std::vector<float> db;
 
-struct NetworkLayer {
-  std::vector<NetworkNeuron> neurons;
-
-  std::vector<std::vector<float>> last_inputs;
-  std::vector<std::vector<float>> last_zs;
-  std::vector<std::vector<float>> last_outputs;
+  std::vector<float> last_input;
+  std::vector<float> last_z;
+  std::vector<float> last_output;
+  size_t last_m = 0;
 };
 
 inline float relu(float x) { return x > 0 ? x : 0; }
@@ -31,24 +34,40 @@ forward_layer(NetworkLayer &layer,
               const std::vector<std::vector<float>> &input_batch,
               bool apply_activation) {
   size_t m = input_batch.size();
-  size_t num_neurons = layer.neurons.size();
+  size_t d = layer.num_inputs;
+  size_t n = layer.num_neurons;
 
-  layer.last_inputs = input_batch;
+  layer.last_m = m;
+  layer.last_input.resize(m * d);
+  for (size_t i = 0; i < m; i++) {
+    std::copy(input_batch[i].begin(), input_batch[i].end(),
+              layer.last_input.begin() + i * d);
+  }
 
-  layer.last_zs.assign(m, std::vector<float>(num_neurons, 0));
-  layer.last_outputs.assign(m, std::vector<float>(num_neurons, 0));
+  layer.last_z.resize(m * n);
+  layer.last_output.resize(m * n);
+
+  cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+              (int)m, (int)n, (int)d, 1.0f,
+              layer.last_input.data(), (int)d,
+              layer.weights.data(), (int)d,
+              0.0f, layer.last_z.data(), (int)n);
 
   for (size_t i = 0; i < m; i++) {
-    for (size_t n = 0; n < num_neurons; n++) {
-      float z = layer.neurons[n].b;
-      for (size_t j = 0; j < input_batch[i].size(); j++) {
-        z += layer.neurons[n].w[j] * input_batch[i][j];
-      }
-      layer.last_zs[i][n] = z;
-      layer.last_outputs[i][n] = apply_activation ? relu(z) : z;
+    for (size_t j = 0; j < n; j++) {
+      float z = layer.last_z[i * n + j] + layer.biases[j];
+      layer.last_z[i * n + j] = z;
+      layer.last_output[i * n + j] = apply_activation ? relu(z) : z;
     }
   }
-  return layer.last_outputs;
+
+  std::vector<std::vector<float>> result(m, std::vector<float>(n));
+  for (size_t i = 0; i < m; i++) {
+    std::copy(layer.last_output.begin() + i * n,
+              layer.last_output.begin() + (i + 1) * n,
+              result[i].begin());
+  }
+  return result;
 }
 
 inline std::vector<std::vector<float>>
@@ -69,62 +88,54 @@ inline void backward_network(std::vector<NetworkLayer> &network,
   size_t num_layers = network.size();
   size_t m = y_true.size();
 
-  std::vector<std::vector<float>> current_deltas(m);
-
   NetworkLayer &output_layer = network[num_layers - 1];
-  size_t num_output_neurons = output_layer.neurons.size();
+  size_t n_out = output_layer.num_neurons;
 
+  std::vector<float> delta(m * n_out);
   for (size_t i = 0; i < m; i++) {
-    current_deltas[i].resize(num_output_neurons);
-    for (size_t n = 0; n < num_output_neurons; n++) {
-      float y_pred = output_layer.last_outputs[i][n];
-      current_deltas[i][n] = (2.0 / m) * (y_pred - y_true[i][n]);
+    for (size_t j = 0; j < n_out; j++) {
+      float y_pred = output_layer.last_output[i * n_out + j];
+      delta[i * n_out + j] = (2.0f / m) * (y_pred - y_true[i][j]);
     }
   }
 
   for (int l = static_cast<int>(num_layers) - 1; l >= 0; l--) {
     NetworkLayer &layer = network[l];
-    size_t num_neurons = layer.neurons.size();
-    size_t num_inputs = layer.neurons[0].w.size();
+    size_t n = layer.num_neurons;
+    size_t d = layer.num_inputs;
 
-    for (size_t n = 0; n < num_neurons; n++) {
-      layer.neurons[n].dw.assign(num_inputs, 0);
-      layer.neurons[n].db = 0;
-    }
+    layer.dw.assign(n * d, 0.0f);
+    layer.db.assign(n, 0.0f);
+
+    cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+                (int)n, (int)d, (int)m, 1.0f,
+                delta.data(), (int)n,
+                layer.last_input.data(), (int)d,
+                0.0f, layer.dw.data(), (int)d);
 
     for (size_t i = 0; i < m; i++) {
-      for (size_t n = 0; n < num_neurons; n++) {
-        float delta = current_deltas[i][n];
-
-        layer.neurons[n].db += delta;
-
-        for (size_t j = 0; j < num_inputs; j++) {
-          float input_val = layer.last_inputs[i][j];
-          layer.neurons[n].dw[j] += delta * input_val;
-        }
+      for (size_t j = 0; j < n; j++) {
+        layer.db[j] += delta[i * n + j];
       }
     }
 
-    if (l == 0) {
-      break;
-    }
+    if (l == 0) break;
 
-    std::vector<std::vector<float>> next_deltas(
-        m, std::vector<float>(num_inputs, 0));
     NetworkLayer &prev_layer = network[l - 1];
 
-    for (size_t i = 0; i < m; i++) {
-      for (size_t j = 0; j < num_inputs; j++) {
-        float error_sum = 0;
-        for (size_t n = 0; n < num_neurons; n++) {
-          error_sum += current_deltas[i][n] * layer.neurons[n].w[j];
-        }
-        float prev_z = prev_layer.last_zs[i][j];
-        next_deltas[i][j] = error_sum * relu_derivative(prev_z);
-      }
+    std::vector<float> error(m * d);
+    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                (int)m, (int)d, (int)n, 1.0f,
+                delta.data(), (int)n,
+                layer.weights.data(), (int)d,
+                0.0f, error.data(), (int)d);
+
+    std::vector<float> next_delta(m * d);
+    for (size_t i = 0; i < m * d; i++) {
+      next_delta[i] = error[i] * relu_derivative(prev_layer.last_z[i]);
     }
 
-    current_deltas = next_deltas;
+    delta = std::move(next_delta);
   }
 }
 
@@ -132,12 +143,12 @@ inline void update_network_weights(std::vector<NetworkLayer> &network,
                                    float alpha,
                                    float l2_regularisation_strength) {
   for (auto &layer : network) {
-    for (auto &neuron : layer.neurons) {
-      for (size_t j = 0; j < neuron.w.size(); j++) {
-        neuron.w[j] -=
-            alpha * (neuron.dw[j] + (l2_regularisation_strength * neuron.w[j]));
-      }
-      neuron.b -= alpha * neuron.db;
+    for (size_t i = 0; i < layer.weights.size(); i++) {
+      layer.weights[i] -=
+          alpha * (layer.dw[i] + l2_regularisation_strength * layer.weights[i]);
+    }
+    for (size_t i = 0; i < layer.biases.size(); i++) {
+      layer.biases[i] -= alpha * layer.db[i];
     }
   }
 }
@@ -159,15 +170,13 @@ calculate_network_loss(const std::vector<NetworkLayer> &network,
   }
   float average_mse = total_mse / m;
 
-  float weigths_squared_sum = 0;
+  float weights_squared_sum = 0;
   for (const auto &layer : network) {
-    for (const auto &neuron : layer.neurons) {
-      for (float w_val : neuron.w) {
-        weigths_squared_sum += w_val * w_val;
-      }
+    for (float w_val : layer.weights) {
+      weights_squared_sum += w_val * w_val;
     }
   }
-  float l2_penalty = 0.5 * l2_regularisation_strength * weigths_squared_sum;
+  float l2_penalty = 0.5f * l2_regularisation_strength * weights_squared_sum;
 
   return average_mse + l2_penalty;
 }
@@ -207,21 +216,20 @@ train(const std::vector<std::vector<float>> &X,
 
   for (int l = 0; l < num_layers; l++) {
     bool is_last_layer = (l == num_layers - 1);
-    size_t num_layer_neurons = is_last_layer ? num_outputs : num_neurons;
-    size_t num_layer_inputs = (l == 0) ? num_features : num_neurons;
+    size_t n = is_last_layer ? num_outputs : num_neurons;
+    size_t d = (l == 0) ? num_features : num_neurons;
 
-    std::normal_distribution<float> dist(0.0f,
-                                         std::sqrt(2.0f / num_layer_inputs));
+    network[l].num_inputs = d;
+    network[l].num_neurons = n;
+    network[l].weights.resize(n * d);
+    network[l].biases.resize(n, 0.0f);
+    network[l].dw.resize(n * d, 0.0f);
+    network[l].db.resize(n, 0.0f);
 
-    network[l].neurons.resize(num_layer_neurons);
+    std::normal_distribution<float> dist(0.0f, std::sqrt(2.0f / d));
 
-    for (size_t i = 0; i < num_layer_neurons; i++) {
-      network[l].neurons[i].w.resize(num_layer_inputs);
-
-      for (size_t j = 0; j < num_layer_inputs; j++) {
-        network[l].neurons[i].w[j] = dist(gen);
-      }
-      network[l].neurons[i].b = 0.0f;
+    for (size_t i = 0; i < n * d; i++) {
+      network[l].weights[i] = dist(gen);
     }
   }
 
