@@ -21,6 +21,7 @@ Every algorithm is written entirely in plain C++ using only the C++ Standard Lib
   - [L2-Regularised Softmax Regression (Multiclass)](#6-l2-regularised-softmax-regression-multiclass-classification)
   - [Support Vector Machine (Binary, Linear)](#7-support-vector-machine-binary-linear)
   - [Multi-Layer Neural Network (Regression)](#8-multi-layer-neural-network-regression)
+  - [Multi-Layer Neural Network (Softmax Classification)](#9-multi-layer-neural-network-softmax-classification)
 - [Preprocessing Utilities](#preprocessing-utilities)
   - [Standardisation (Z-Score)](#standardisation-z-score)
   - [Normalisation (Min-Max)](#normalisation-min-max)
@@ -64,6 +65,7 @@ This library inverts that trade-off. Every implementation is:
 | L2-regularised softmax regression (multiclass, C classes) | ✅ Complete |
 | Linear support vector machine (hinge loss, L2 penalty) | ✅ Complete |
 | Multi-layer neural network (regression, ReLU, backpropagation) | ✅ Complete |
+| Multi-layer neural network (classification, Softmax, ReLU, backpropagation) | ✅ Complete |
 | Z-score standardisation (single value, vector, matrix) | ✅ Complete |
 | Min-max normalisation | ✅ Complete |
 | One-hot encoding (character data) | ✅ Complete |
@@ -1140,6 +1142,227 @@ int main() {
 
 ---
 
+### 9. Multi-Layer Neural Network (Softmax Classification)
+
+**File**: `softmax_regression_neural_network.hpp` | **Demo**: `softmax_regression_neural_network.cpp`
+
+#### Architecture
+
+This is a fully-connected feedforward network supporting:
+
+- An arbitrary number of hidden layers (specified by `num_layers`)
+- An arbitrary number of neurons per hidden layer (specified by `num_neurons`, applied uniformly)
+- ReLU activation on all hidden layers
+- Softmax activation on the output layer (multiclass classification)
+- Cross-entropy loss with L2 regularisation
+- Batch gradient descent with full backpropagation
+
+The network architecture is:
+
+```
+Input (d features)
+  → [Linear + ReLU] (num_neurons)
+    → [Linear + ReLU] (num_neurons)
+      → ... (num_layers - 2 more hidden layers)
+        → Softmax (num_outputs)
+```
+
+#### Data Structures
+
+```cpp
+struct NetworkNeuron {
+    std::vector<float> w;  // Weight vector (one per input to this neuron)
+    float b = 0;           // Bias
+    std::vector<float> dw; // Accumulated weight gradient
+    float db = 0;          // Accumulated bias gradient
+};
+
+struct NetworkLayer {
+    std::vector<NetworkNeuron> neurons;
+
+    // Cached values for backpropagation:
+    std::vector<std::vector<float>> last_inputs;   // Input to this layer (m x input_dim)
+    std::vector<std::vector<float>> last_zs;       // Pre-activation values (m x neuron_count)
+    std::vector<std::vector<float>> last_outputs;  // Post-activation values (m x neuron_count)
+};
+```
+
+The network itself is represented as `std::vector<NetworkLayer>`.
+
+#### Forward Pass
+
+For each layer `l` with `n_l` neurons:
+
+1. For each example `i` and neuron `n`:
+   ```
+   z_{i,n} = b_n + Σⱼ w_{n,j} · a_{i,j}ᵠ⁻¹
+   ```
+   where `aᵠ⁻¹` is the output of the previous layer (or the raw input for layer 0).
+
+2. Apply activation:
+   - Hidden layers: `a_{i,n} = ReLU(z_{i,n}) = max(0, z_{i,n})`
+   - Output layer: `a_{i,n} = Softmax(z_{i,n}) = exp(z_{i,n} - max_z) / Σₖ exp(z_{i,k} - max_z)` (using logit-max trick to prevent overflow)
+
+3. All `last_inputs`, `last_zs`, and `last_outputs` are cached for the backward pass.
+
+#### Backward Pass (Backpropagation)
+
+**Output layer delta** (Cross-entropy with softmax gradient):
+
+```
+δᵢ,ₙᵒᵘᵗ = (1/m) · (ŷᵢ,ₙ - yᵢ,ₙ)
+```
+
+where `ŷᵢ,ₙ` is the predicted softmax probability for class `n`, and `yᵢ,ₙ` is the target value (typically one-hot encoded).
+
+**Hidden layer delta** (backpropagated through ReLU):
+
+```
+δⱼʰⁱᵈᵈᵉⁿ = (Σₙ δₙ · w_{n,j}) · ReLU'(zⱼ)
+```
+
+where `ReLU'(z) = 1 if z > 0 else 0`.
+
+**Gradient accumulation**:
+
+```
+∂J/∂w_{n,j} = Σᵢ δᵢ,ₙ · aᵢ,ⱼᵠ⁻¹
+∂J/∂b_n = Σᵢ δᵢ,ₙ
+```
+
+#### Weight Initialisation (He Initialisation)
+
+Weights are initialised using He (Kaiming) initialisation:
+
+```
+W ~ N(0, √(2 / n_in))
+```
+
+where `n_in` is the number of inputs to the layer. The random number generator uses a fixed seed (`42`) for reproducibility.
+
+#### API Reference
+
+```cpp
+// Forward pass through a single layer.
+std::vector<std::vector<float>> forward_layer(
+    NetworkLayer& layer,
+    const std::vector<std::vector<float>>& input_batch,
+    bool apply_activation
+);
+
+// Forward pass through the entire network.
+std::vector<std::vector<float>> forward_network(
+    std::vector<NetworkLayer>& network,
+    const std::vector<std::vector<float>>& X
+);
+
+// Backward pass through the entire network.
+void backward_network(
+    std::vector<NetworkLayer>& network,
+    const std::vector<std::vector<float>>& y_true
+);
+
+// Apply gradient descent to all weights and biases.
+void update_network_weights(
+    std::vector<NetworkLayer>& network,
+    float alpha,
+    float l2_regularisation_strength
+);
+
+// Calculate cross-entropy + L2 loss.
+float calculate_network_loss(
+    const std::vector<NetworkLayer>& network,
+    const std::vector<std::vector<float>>& y_pred,
+    const std::vector<std::vector<float>>& y_true,
+    float l2_regularisation_strength
+);
+
+// Train a pre-existing network.
+void train_network(
+    std::vector<NetworkLayer>& network,
+    const std::vector<std::vector<float>>& X,
+    const std::vector<std::vector<float>>& y,
+    float alpha,
+    float l2_regularisation_strength,
+    int num_epochs,
+    bool print_progress = true
+);
+
+// Full pipeline: initialise + train.
+std::vector<NetworkLayer> train(
+    const std::vector<std::vector<float>>& X,
+    const std::vector<std::vector<float>>& y,
+    int num_layers,
+    int num_neurons,
+    float alpha,
+    float l2_regularisation_strength,
+    int num_epochs,
+    bool print_progress = true
+);
+
+// Predict using a trained network.
+std::vector<std::vector<float>> predict(
+    std::vector<NetworkLayer>& network,
+    const std::vector<std::vector<float>>& X
+);
+```
+
+#### Full Worked Example
+
+```cpp
+#include "softmax_regression_neural_network.hpp"
+#include "one-hot-encode.hpp"
+#include <cstdio>
+#include <vector>
+
+int main() {
+    // Toy 2D features dataset for a 3-class problem
+    std::vector<std::vector<float>> features = {
+        {1.5f, 0.2f}, {-0.5f, 2.1f}, {0.1f, -1.2f}, {2.0f, 1.8f}
+    };
+
+    std::vector<char> input_data = {'A', 'B', 'C', 'A'};
+    std::vector<char> categories = {'A', 'B', 'C'};
+
+    // One-hot encode the categorical targets
+    auto encoded_int = encode(input_data, categories);
+    std::vector<std::vector<float>> classes;
+    for (const auto &row : encoded_int) {
+        classes.push_back(std::vector<float>(row.begin(), row.end()));
+    }
+
+    // 3 hidden layers, 128 neurons each
+    int num_layers = 3;
+    int num_neurons = 128;
+    float alpha = 0.005f;
+    float l2_regularisation_strength = 0.001f;
+    int num_epochs = 10000;
+
+    auto network = train(features, classes, num_layers, num_neurons,
+                         alpha, l2_regularisation_strength, num_epochs, true);
+
+    auto predictions = predict(network, features);
+
+    printf("\nFinal Output Probabilities:\n");
+    for (size_t i = 0; i < predictions.size(); i++) {
+        printf("Input %zu -> [ ", i);
+        for (float prob : predictions[i]) {
+            printf("%f ", prob);
+        }
+        printf("]\n");
+    }
+}
+```
+
+#### Implementation Details
+
+- **Softmax Output Activation**: The output layer applies the logit-max trick to prevent overflow when computing exponentials for class probabilities.
+- **Cross-Entropy Loss**: Evaluates $-\frac{1}{m} \sum y \log(\hat{y})$. Probabilities are clipped to a minimum of `1e-15f` to prevent numerical issues with `log(0)`.
+- **Backpropagation Delta**: The output delta calculation matches the softmax cross-entropy gradient: $\frac{1}{m} (\hat{y} - y)$, where $y$ is the target matrix of probabilities (typically one-hot vectors).
+- **Caching**: Just like the regression neural network, intermediate inputs, z-values, and outputs are cached in `NetworkLayer` to avoid recomputations during backpropagation.
+
+---
+
 ## Preprocessing Utilities
 
 ### Standardisation (Z-Score)
@@ -1273,6 +1496,9 @@ g++ -std=c++17 -O2 -o svm support-vector-machine.cpp && ./svm
 
 # Neural network (requires auto-mpg.csv in working directory)
 g++ -std=c++17 -O2 -o nn linear_regression_neural_network.cpp && ./nn
+
+# Classification neural network
+g++ -std=c++17 -O2 -o classification_nn softmax_regression_neural_network.cpp && ./classification_nn
 ```
 
 ### Compiler Flags
@@ -1292,6 +1518,7 @@ For faster recompilation during development, the repository includes precompiled
 ```bash
 g++ -std=c++17 -x c++-header standardisation.hpp
 g++ -std=c++17 -x c++-header linear_regression_neural_network.hpp
+g++ -std=c++17 -x c++-header softmax_regression_neural_network.hpp
 ```
 
 ### Build Script
@@ -1310,6 +1537,7 @@ g++ -std=c++17 -O2 -o build/l2-regularised-logistic-regression l2-regularised-lo
 g++ -std=c++17 -O2 -o build/l2-regularised-softmax-regression l2-regularised-softmax-regression.cpp
 g++ -std=c++17 -O2 -o build/support-vector-machine support-vector-machine.cpp
 g++ -std=c++17 -O2 -o build/linear-regression-neural-network linear_regression_neural_network.cpp
+g++ -std=c++17 -O2 -o build/softmax-regression-neural-network softmax_regression_neural_network.cpp
 ```
 
 ---
@@ -1326,6 +1554,7 @@ g++ -std=c++17 -O2 -o build/linear-regression-neural-network linear_regression_n
 | `l2-regularised-softmax-regression.hpp` | 133 | Header | Multiclass softmax regression (C classes) with L2 regularisation |
 | `support-vector-machine.hpp` | 58 | Header | Linear SVM with hinge loss and L2 regularisation |
 | `linear_regression_neural_network.hpp` | 237 | Header | Multi-layer feedforward network with ReLU and backpropagation |
+| `softmax_regression_neural_network.hpp` | 262 | Header | Multi-layer feedforward network with ReLU, Softmax output, and backpropagation |
 | `standardisation.hpp` | 96 | Header | Z-score standardisation (single value, vector, matrix) |
 | `normalisation.hpp` | 26 | Header | Min-max normalisation |
 | `one-hot-encode.hpp` | 28 | Header | One-hot encoding for character data |
@@ -1337,6 +1566,7 @@ g++ -std=c++17 -O2 -o build/linear-regression-neural-network linear_regression_n
 | `l2-regularised-softmax-regression.cpp` | 30 | Demo | 3-class softmax on 2D features |
 | `support-vector-machine.cpp` | 25 | Demo | Binary SVM classification |
 | `linear_regression_neural_network.cpp` | 41 | Demo | 3-layer net on auto-mpg dataset |
+| `softmax_regression_neural_network.cpp` | 39 | Demo | 3-layer net classification on toy dataset |
 | `decision-trees.cpp` | 3 | Stub | ID3 decision tree (not yet implemented) |
 | `auto-mpg.csv` | 393 | Data | Pre-standardised auto MPG dataset (7 features, 1 target) |
 
@@ -1373,7 +1603,8 @@ If an input value is not found in the provided `categories`, the corresponding o
 ### Log of Zero
 
 All loss functions that use `log()` clamp their inputs:
-- Logistic/softmax: `max(ε, min(1-ε, y_pred))` where ε = 1e⁻⁷
+- Logistic/softmax regression: `max(ε, min(1-ε, y_pred))` where ε = 1e⁻⁷
+- Softmax Neural Network: `max(y_pred, 1e-15f)`
 - SVM: Hinge loss does not use `log()`, so it is unaffected.
 
 ---
@@ -1382,7 +1613,7 @@ All loss functions that use `log()` clamp their inputs:
 
 ### Softmax: The Logit-Max Trick
 
-The softmax function is implemented as:
+The softmax function (used in both `l2-regularised-softmax-regression.hpp` and `softmax_regression_neural_network.hpp`) is implemented to subtract the maximum logit before computing exponentials. For example, in `l2-regularised-softmax-regression.hpp`:
 
 ```cpp
 float maximum_logit = -INFINITY;
@@ -1392,6 +1623,23 @@ for (int c = 0; c < num_classes; c++) {
 }
 // Subtract max before exp():
 hat_y[c] = exp(logits[c] - maximum_logit);
+```
+
+In `softmax_regression_neural_network.hpp`, the same principle is applied to the output layers' pre-activation values $z$:
+
+```cpp
+float max_z = network[l].last_zs[i][0];
+for (float z_val : network[l].last_zs[i]) {
+  if (z_val > max_z) {
+    max_z = z_val;
+  }
+}
+
+float sum_exp = 0;
+for (size_t n = 0; n < network[l].neurons.size(); n++) {
+  network[l].last_outputs[i][n] = exp(network[l].last_zs[i][n] - max_z);
+  sum_exp += network[l].last_outputs[i][n];
+}
 ```
 
 This guarantees all exponents are ≤ 0, preventing `exp(x)` overflow for large logits.
@@ -1407,7 +1655,7 @@ If higher precision is needed, replace `float` with `double` throughout the head
 
 ### Random Seed
 
-The neural network uses a fixed seed (`42`) for reproducibility. Every run produces identical initialisation and identical results. To vary initialisation, change the seed or make it configurable.
+The neural networks use a fixed seed (`42`) for reproducibility. Every run produces identical initialisation and identical results. To vary initialisation, change the seed or make it configurable.
 
 ---
 
@@ -1424,14 +1672,15 @@ The neural network uses a fixed seed (`42`) for reproducibility. Every run produ
 | L2-regularised logistic | O(m) | ~10⁴ epochs |
 | L2-regularised softmax | O(m·C·d) | ~10⁴ epochs |
 | SVM (hinge) | O(m) | ~5×10³ epochs |
-| Neural network | O(m·L·n²) | ~10⁴ epochs |
+| Neural network (Regression) | O(m·L·n²) | ~10⁴ epochs |
+| Neural network (Softmax) | O(m·L·n²) | ~10⁴ epochs |
 
 where `m` = examples, `d` = features, `C` = classes, `L` = layers, `n` = neurons/layer.
 
 ### Memory Usage
 
 - All data is stored in `std::vector` with no memory pooling.
-- The neural network caches the full forward pass (inputs, z-values, outputs for every example at every layer), which is O(m · L · n). For the demo (393 examples, 3 layers, 128 neurons), this is approximately 393 × 3 × 128 × 3 × 4 bytes ≈ 1.8 MB for the caches alone.
+- The neural networks cache the full forward pass (inputs, z-values, outputs for every example at every layer), which is O(m · L · n). For the regression neural network demo (393 examples, 3 layers, 128 neurons), this is approximately 393 × 3 × 128 × 3 × 4 bytes ≈ 1.8 MB for the caches alone.
 - Matrix operations in the closed-form solver allocate temporary matrices (e.g., the augmented matrix of size n × (n+1)).
 
 ### Optimisation Suggestions
